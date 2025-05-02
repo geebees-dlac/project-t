@@ -5,6 +5,10 @@ int main()
     auto window = sf::RenderWindow(sf::VideoMode({1920u, 1080u}), "CMake SFML Project");
     window.setFramerateLimit(144);
 
+    // Graphical display
+    const sf::Font font("../arial.ttf");
+    sf::Text text(font, "Hello, World!", 50);
+
     while (window.isOpen())
     {
         while (const std::optional event = window.pollEvent())
@@ -16,6 +20,9 @@ int main()
         }
 
         window.clear();
+
+        window.draw(text);
+
         window.display();
     }
 }

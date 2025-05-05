@@ -3,7 +3,7 @@
 int main()
 {
     auto window = sf::RenderWindow(sf::VideoMode({1920u, 1080u}), "CMake SFML Project");
-    window.setFramerateLimit(144);
+    window.setFramerateLimit(60);
 
     // Graphical display
     const sf::Font font("../arial.ttf");

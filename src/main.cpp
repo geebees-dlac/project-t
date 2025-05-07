@@ -6,7 +6,7 @@ int main()
     window.setFramerateLimit(60);
 
     // Graphical display
-    const sf::Font font("../arial.ttf"); //wow
+    const sf::Font font("../arial.ttf");
     sf::Text text(font, "Hello, World!", 50);
 
     while (window.isOpen())

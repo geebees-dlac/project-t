@@ -13,7 +13,7 @@ option(PROJECTT_FORCE_SFML_FETCHCONTENT "Force using FetchContent for SFML" OFF)
 
 # --- Try to find SFML ---
 if(NOT PROJECTT_FORCE_SFML_FETCHCONTENT)
-    find_package(SFML 3 COMPONENTS graphics REQUIRED QUIET)
+    find_package(SFML 3 COMPONENTS system window graphics audio)
 endif()
 
 # --- If not found or forced, use FetchContent ---
@@ -28,14 +28,14 @@ if(PROJECTT_FORCE_SFML_FETCHCONTENT OR NOT SFML_FOUND)
         GIT_SHALLOW    ON
     )
     FetchContent_MakeAvailable(SFML)
+endif()
+
+
+# --- Check if SFML::graphics target exists ---
+if(TARGET SFML::graphics)
     set(SFML_LINK_TARGET SFML::graphics)
 else()
-    message(STATUS "SFML found via find_package. Version: ${SFML_VERSION}")
-    if (TARGET SFML::graphics)
-        set(SFML_LINK_TARGET SFML::graphics)
-    else()
-        message(FATAL_ERROR "SFML::graphics target not found after find_package.")
-    endif()
+    message(FATAL_ERROR "SFML::graphics target not found.")
 endif()
 
 # --- Executable ---

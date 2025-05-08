@@ -1,3 +1,6 @@
+// IF NAG HOMEBREW KA ZEANN eto po yung command
+// g++ main.cpp -std=c++17 -I/opt/homebrew/include -L/opt/homebrew/lib -lsfml-graphics -lsfml-window -lsfml-system -o main
+
 #include <SFML/Graphics.hpp>
 #include <iostream>
 #include <vector>

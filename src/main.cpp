@@ -11,11 +11,10 @@ const float JUMP_FORCE = -500.f;
 const float MOVE_SPEED = 300.f;
 const sf::Vector2f BLOCK_SIZE(50.f, 50.f);
 
-int main() {
-    sf::Vector2u windowSize = {1280, 720};
-    // SFML 3: VideoMode can take a Vector2u
-    sf::RenderWindow window(sf::VideoMode(windowSize), "Platformer Block");
-    window.setFramerateLimit(144);
+int main()
+{
+    auto window = sf::RenderWindow(sf::VideoMode({1920u, 1080u}), "CMake SFML Project");
+    window.setFramerateLimit(60);
 
     // Font Setter 
     sf::Font font;

@@ -19,6 +19,7 @@ int main(void){
 	window.setFramerateLimit(60);
 	sf::Event e;
 
+    
 	//set up the view
 	sf::View mainView(sf::FloatRect(0.f, 0.f, 1200.f, 800.f));
 	window.setView(mainView);

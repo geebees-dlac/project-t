@@ -1,5 +1,542 @@
 #include <iostream>
 #include <SFML/Graphics.hpp>
+#include <SFML/Config.hpp> // For sf::Uint8
+#include <optional> // For std::optional with SFML 3 event handling & joystick ID
+
+// Assuming your CMakeLists.txt has:
+// target_include_directories(your_executable_name PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/../include)
+// or preferably:
+// target_include_directories(your_executable_name PUBLIC ${PROJECT_SOURCE_DIR}/include)
+// This allows for cleaner includes:
+#include "CollisionSystem.hpp" // Use quotes for project headers
+#include "platformbody.hpp"
+#include "playerbody.hpp"
+#include "tile.hpp"
+#include "trapbody.hpp"
+#include "Updater.hpp" //interpolate
+
+int main(void){
+
+    const sf::Vector2f tileSize = sf::Vector2f(32, 32);
+    const int NUM_PLATFORM_OBJECTS = 24;
+
+    float GRAVITY = 0.f;//variable gravity
+
+    // SFML 3: sf::VideoMode constructor often uses an initializer list for sf::Vector2u
+	sf::RenderWindow window(sf::VideoMode({800, 600}), "Collision Detection", sf::Style::Default);
+	window.setKeyRepeatEnabled(false);
+	window.setVerticalSyncEnabled(true);
+	window.setFramerateLimit(60);
+	// sf::Event e; // SFML 3: Event is usually handled inside the pollEvent loop with std::optional
+
+    
+	//set up the view (sf::FloatRect constructor with 4 floats is still valid)
+    sf::View mainView(sf::FloatRect(sf::Vector2f(0.f, 0.f), sf::Vector2f(1200.f, 800.f)));
+	window.setView(mainView);
+
+	//instantiate the collision system object
+	phys::collisionSystem collisionSys;
+
+	//set up some platforms - all normal platforms by default
+	phys::platformBody bodies[NUM_PLATFORM_OBJECTS];
+	for (int i = 0; i < NUM_PLATFORM_OBJECTS;i++){
+        bodies[i].m_id = i;//assign each platform an id
+		bodies[i].m_width = tileSize.x*4;
+        bodies[i].m_height = tileSize.y;
+        bodies[i].m_type = phys::bodyType::platform;
+	}
+
+	//place them on the screen somewhere...
+	bodies[0].m_position = sf::Vector2f(0.f, static_cast<float>(window.getSize().y) - 32.f);
+	bodies[1].m_position = sf::Vector2f(0.f, 356.f);
+	bodies[2].m_position = sf::Vector2f(480.f, static_cast<float>(window.getSize().y) - 192.f);
+	bodies[3].m_position = sf::Vector2f(0.f, 96.f);
+	bodies[4].m_position = sf::Vector2f(640.f, 224.f);
+	bodies[5].m_position = sf::Vector2f(480.f, static_cast<float>(window.getSize().y) - 32.f);
+	bodies[6].m_position = sf::Vector2f(672.f, static_cast<float>(window.getSize().y) - 260.f);
+	bodies[7].m_position = sf::Vector2f(96.f, static_cast<float>(window.getSize().y) - 128.f);
+	bodies[8].m_position = sf::Vector2f(640, static_cast<float>(window.getSize().y) - 160.f);
+	bodies[9].m_position = sf::Vector2f(640.f, 64.f);
+    bodies[10].m_position = sf::Vector2f(292, static_cast<float>(window.getSize().y) - 128.f);
+
+	//conveyor belt
+	bodies[11].m_position = sf::Vector2f(static_cast<float>(window.getSize().x) / 4.f, static_cast<float>(window.getSize().y) / 2.f);
+    bodies[11].m_width = tileSize.x*10;
+    bodies[11].m_height = tileSize.y;
+    bodies[11].m_type = phys::bodyType::conveyorBelt;
+    bodies[11].m_surfaceVelocity = 12.f;
+
+	//moving platform
+	bodies[12].m_height = tileSize.y/8;
+	bodies[12].m_width = tileSize.x*5;
+	bodies[12].m_position = sf::Vector2f(static_cast<float>(window.getSize().x)/4.f, static_cast<float>(window.getSize().y)/4.f);
+	bodies[12].m_type = phys::bodyType::moving;
+	int platformDir = 1;
+	float platformVelocity = 0.f;
+
+	//jump through platforms
+	bodies[13].m_width = tileSize.x;
+	bodies[13].m_height = tileSize.y/8.f;
+	bodies[13].m_position = sf::Vector2f(160.f, static_cast<float>(window.getSize().y) - 224.f);
+	bodies[13].m_type = phys::bodyType::jumpthrough;
+
+	bodies[14].m_width = tileSize.x;
+	bodies[14].m_height = tileSize.y/8.f;
+	bodies[14].m_position = sf::Vector2f(576, static_cast<float>(window.getSize().y) - 288.f);
+	bodies[14].m_type = phys::bodyType::jumpthrough;
+
+    //falling platforms
+	bodies[15].m_width = tileSize.x;
+	bodies[15].m_height = tileSize.y;
+	bodies[15].m_position = sf::Vector2f(192, 64.f);
+	bodies[15].m_type = phys::bodyType::falling;
+
+	bodies[16].m_width = tileSize.x;
+	bodies[16].m_height = tileSize.y;
+	bodies[16].m_position = sf::Vector2f(256.f, 64.f);
+	bodies[16].m_type = phys::bodyType::falling;
+
+	bodies[17].m_width = tileSize.x;
+	bodies[17].m_height = tileSize.y;
+	bodies[17].m_position = sf::Vector2f(320.f, 64.f);
+	bodies[17].m_type = phys::bodyType::falling;
+
+	bodies[18].m_width = tileSize.x;
+	bodies[18].m_height = tileSize.y;
+	bodies[18].m_position = sf::Vector2f(384.f, 64.f);
+	bodies[18].m_type = phys::bodyType::falling;
+
+	bodies[19].m_width = tileSize.x;
+	bodies[19].m_height = tileSize.y;
+	bodies[19].m_position = sf::Vector2f(448.f, 64.f);
+	bodies[19].m_type = phys::bodyType::falling;
+
+    //vanishing platforms
+	bodies[20].m_width = tileSize.x;
+	bodies[20].m_height = tileSize.y;
+	bodies[20].m_position = sf::Vector2f(192.f, -32.f);
+	bodies[20].m_type = phys::bodyType::vanishing;
+
+	bodies[21].m_width = tileSize.x;
+	bodies[21].m_height = tileSize.y;
+	bodies[21].m_position = sf::Vector2f(256.f, -32.f);
+	bodies[21].m_type = phys::bodyType::vanishing;
+
+	bodies[22].m_width = tileSize.x;
+	bodies[22].m_height = tileSize.y;
+	bodies[22].m_position = sf::Vector2f(320.f, -32.f);
+	bodies[22].m_type = phys::bodyType::vanishing;
+
+	bodies[23].m_width = tileSize.x;
+	bodies[23].m_height = tileSize.y;
+	bodies[23].m_position = sf::Vector2f(384.f, -32.f);
+	bodies[23].m_type = phys::bodyType::vanishing;
+
+
+	tile tiles[NUM_PLATFORM_OBJECTS]; // Assuming tile inherits sf::RectangleShape or is a drawable
+	for (int i = 0; i < NUM_PLATFORM_OBJECTS; ++i){
+		tiles[i].setPosition(bodies[i].m_position);
+		tiles[i].setSize(sf::Vector2f(bodies[i].m_width, bodies[i].m_height));
+		switch(bodies[i].m_type){
+            case phys::bodyType::platform:
+            tiles[i].setFillColor(sf::Color(255, 0, 0, 255));
+            break;
+            case phys::bodyType::conveyorBelt:
+            tiles[i].setFillColor(sf::Color(255, 100, 0, 255));
+            break;
+            case phys::bodyType::moving:
+            tiles[i].setFillColor(sf::Color(0, 255, 0, 255));
+            break;
+            case phys::bodyType::jumpthrough:
+            tiles[i].setFillColor(sf::Color(0, 255, 255, 255));
+            break;
+            case phys::bodyType::falling:
+            tiles[i].setFillColor(sf::Color(255, 255, 0, 255));
+            break;
+            case phys::bodyType::vanishing:
+            tiles[i].setFillColor(sf::Color(255, 0, 255, 255));
+            break;
+            default: // Added default to handle all enum cases
+                break;
+		}
+	}
+
+	//set up for the player
+	phys::dynamicBody playerBody;
+	playerBody.m_position = sf::Vector2f(static_cast<float>(window.getSize().x)/2.f, static_cast<float>(window.getSize().y)/2.f);
+	playerBody.m_width = tileSize.x;
+	playerBody.m_height = tileSize.y;
+	playerBody.m_velocity = sf::Vector2f(0,0);
+	playerBody.m_lastPosition = sf::Vector2f(static_cast<float>(window.getSize().x)/2.f, static_cast<float>(window.getSize().y)/2.f);
+	playerBody.m_moveX = 0;
+	playerBody.m_moveY = 0;
+
+	sf::RectangleShape player;
+	player.setFillColor(sf::Color(255, 255, 255, 255));
+	player.setSize(sf::Vector2f(tileSize.x, tileSize.y));
+	player.setPosition(playerBody.m_position);
+
+	//time variables
+	sf::Clock tickClock;
+	sf::Time timeSinceLastUpdate = sf::Time::Zero;
+	sf::Time duration = sf::Time::Zero;
+	sf::Time TimePerFrame = sf::seconds(1.f / 60.f);
+	sf::Time jumpTime = sf::Time::Zero;
+	sf::Time vanishingTime = sf::Time::Zero;
+	int oddEven = 1;
+	float alpha = 0.f;
+	// sf::Time springTime = sf::Time::Zero; // Unused
+	// bool springPeak = false; // Unused
+	// bool canSpring = false; // Unused
+	// bool springSprung = false; // Unused
+
+	//get information about the joystick
+    // SFML 3: getIdentification returns std::optional
+    if (sf::Joystick::isConnected(0)) // Check if joystick is connected
+    {
+        sf::Joystick::Identification id = sf::Joystick::getIdentification(0);
+        std::cout << "\nVendor ID: " << id.vendorId << "\nProduct ID: " << id.productId << std::endl;
+        // sf::String is still usable, but std::string is often preferred. SFML handles conversion.
+        std::string controllerTitle = "Joystick Use: " + std::string(id.name);
+        window.setTitle(controllerTitle);
+    }
+
+
+	//query joystick for settings if it's plugged in...
+	if (sf::Joystick::isConnected(0)){
+		unsigned int buttonCount = sf::Joystick::getButtonCount(0);
+        // SFML 3: Joystick axes are scoped enums sf::Joystick::Axis::
+		bool hasZ = sf::Joystick::hasAxis(0, sf::Joystick::Axis::Z);
+
+		std::cout << "Button count: " << buttonCount << std::endl;
+        std::cout << "Has a z-axis: " << hasZ << std::endl;
+	}
+
+	int turbo = 1;//indicate whether player is using button for turbo speed ;)
+
+	//for movement
+	sf::Vector2f speed = sf::Vector2f(0.f,0.f);
+
+    //collision info for insight on handling player movement
+	bool intersection = false;
+	unsigned int type = phys::bodyType::none;
+	bool collisionTop = false;
+	bool collisionBottom = false;
+	bool collisionLeft = false;
+	bool collisionRight = false;
+	bool canJump = false;
+	bool jumped = false;
+	unsigned int jumpCount = 0;
+
+	//for debug info
+	int debug = -1;
+
+	bool running = true;
+	while (running){
+        // SFML 3: pollEvent returns std::optional<sf::Event>
+		while (auto event = window.pollEvent()){ // event is an std::optional<sf::Event>
+            // Check if the optional contains a value before trying to access it
+            // Though in this loop structure, it always will.
+            // Use event->member or (*event).member to access event data
+
+			if (event->is<sf::Event::Closed>()){ // New way to check event type
+				window.close();
+                running = false; // Ensure loop terminates
+				// return 0; // Prefer exiting loop and returning at the end of main
+			}
+
+            // Example for key press:
+            if (auto* keyPressed = event->getIf<sf::Event::KeyPressed>()) // New way for specific event data
+            {
+                // SFML 3: Keyboard keys are scoped enums sf::Keyboard::Key::
+                switch (keyPressed->code) // keyPressed is a pointer to sf::Event::KeyPressed
+                {
+                    case sf::Keyboard::Key::Escape:
+                    {
+                        window.close();
+                        running = false;
+                        // return 0;
+                    }
+                    break;
+                    case sf::Keyboard::Key::D: // Note: Key, not Scancode for typical usage
+                    {
+                        debug *= -1;
+                    }
+                    break;
+                    default:
+                        break;
+                }
+            }
+		}
+        if (!running) break; // Exit main loop if window closed
+
+		sf::Time elapsedTime = tickClock.restart();
+		timeSinceLastUpdate += elapsedTime;
+		while (timeSinceLastUpdate > TimePerFrame)
+		{
+			timeSinceLastUpdate -= TimePerFrame;
+
+            //////////////////////////////////////
+            //get joystick input inside fixed
+            //time step
+            //////////////////////////////////////
+            if (sf::Joystick::isConnected(0)) // Good practice to check if connected each frame
+            {
+                // SFML 3: Joystick axes are scoped enums sf::Joystick::Axis::
+                speed = sf::Vector2f(sf::Joystick::getAxisPosition(0, sf::Joystick::Axis::X),
+                                     sf::Joystick::getAxisPosition(0, sf::Joystick::Axis::Y));
+
+                if (sf::Joystick::isButtonPressed(0, 2)){//"X" button on the XBox 360 controller
+                    turbo = 2;
+                } else { // Added else for clarity
+                    turbo = 1;
+                }
+
+                if(sf::Joystick::isButtonPressed(0,0)){//"A" button on the XBox 360 controller
+                    jumpCount++;
+                    jumped = true;
+                }
+
+                if(!sf::Joystick::isButtonPressed(0,0) && jumpCount > 1){
+                    jumped = false;
+                    jumpCount = 0;
+                }
+
+                if(sf::Joystick::isButtonPressed(0,1)){//"B" button on the XBox 360 controller
+                    window.close();
+                    running = false;
+                    // return 0;
+                }
+            } else {
+                speed = {0.f, 0.f}; // Reset speed if joystick disconnects
+            }
+            if (!running) break; // Exit fixed timestep loop if window closed
+
+
+			//accumulator for moving platform
+			if(duration.asSeconds() >= 4.f){
+                platformDir *= -1;
+                duration = sf::Time::Zero;
+			}
+            else { // Added else
+                duration += TimePerFrame;
+            }
+
+            //moving platform updates
+			if(duration.asSeconds() <= 3.f)
+                platformVelocity = TimePerFrame.asSeconds()*(static_cast<float>(platformDir) * 700.f * math::interpolate::quadraticEaseInOut(duration.asSeconds(), 0.f, 1.f, 3.f));
+            else
+                platformVelocity = 0.f;
+
+            //update the position of the moving platforms (bodies and geometry)
+			bodies[12].m_position.x += platformVelocity;
+            tiles[12].setPosition(bodies[12].m_position);
+
+
+            for(int i=0; i<NUM_PLATFORM_OBJECTS; ++i){
+                bool collided = bodies[i].m_falling;
+                if(collided && tiles[i].m_fallTime.asSeconds() > .5f){ // Assuming m_fallTime is in tile.hpp
+                    tiles[i].m_fallTime = sf::Time::Zero;
+                // No 'else' here, this was likely intended to be separate
+                // }else{
+                //     tiles[i].m_fallTime += TimePerFrame;
+                }
+                // This seems to be the actual logic for incrementing fallTime
+                if (collided) { // Only increment if it was already considered falling
+                     tiles[i].m_fallTime += TimePerFrame;
+                     if(tiles[i].m_fallTime.asSeconds() > .5f){ // Check again after increment
+                        tiles[i].m_falling = true; // Assuming m_falling is in tile.hpp
+                    }
+                } else { // If not collided (i.e., not m_falling from bodies[i]), reset tile's fall time
+                    tiles[i].m_fallTime = sf::Time::Zero;
+                    tiles[i].m_falling = false;
+                }
+            }
+
+            for(int i=0; i<NUM_PLATFORM_OBJECTS; ++i){
+                if(tiles[i].m_falling && bodies[i].m_falling){ // Check both body and tile state
+                    bodies[i].m_position = sf::Vector2f(-9999,0);
+                    // SFML 3: move takes a Vector2f
+                    tiles[i].move({0.f, TimePerFrame.asSeconds()*1000.f});
+                }
+            }
+
+            if(vanishingTime.asSeconds() > 2.f){
+                vanishingTime = sf::Time::Zero;
+                oddEven *= -1;
+            }else{
+                vanishingTime += TimePerFrame;
+            }
+
+            if(oddEven == 1){
+                for(int i=20; i<24; ++i){
+                    if(i%2 == 0){
+                        if(vanishingTime.asSeconds() < 1.f){
+                            alpha = math::interpolate::sineEaseIn(vanishingTime.asSeconds(),0.f,255.f, 1.f);
+                            tiles[i].setFillColor(sf::Color(255,0,255, static_cast<uint8_t>(alpha)));
+                        } else {
+                            tiles[i].setFillColor(sf::Color(255,0,255,0));
+                        }
+                        if(tiles[i].getFillColor().a <= 0)
+                            bodies[i].m_position = sf::Vector2f(-9999,0);
+                    }else{
+                        if(vanishingTime.asSeconds() < 1.f){
+                            alpha = math::interpolate::sineEaseIn(vanishingTime.asSeconds(),0.f,255.f, 1.f);
+                            tiles[i].setFillColor(sf::Color(255,0,255, static_cast<uint8_t>(alpha)));
+                        } else {
+                            tiles[i].setFillColor(sf::Color(255,0,255,255));
+                        }
+                        bodies[i].m_position = tiles[i].getPosition();
+                    }
+                }
+            }else{
+                for(int i=20; i<24; ++i){
+                    if(i%2 == 0){
+                        if(vanishingTime.asSeconds() < 1.f){
+                            alpha = math::interpolate::sineEaseIn(vanishingTime.asSeconds(),0.f,255.f, 1.f);
+                            tiles[i].setFillColor(sf::Color(255,0,255, static_cast<uint8_t>(alpha)));
+                        } else {
+                            tiles[i].setFillColor(sf::Color(255,0,255,255));
+                        }
+                        bodies[i].m_position = tiles[i].getPosition();
+                    }else{
+                        if(vanishingTime.asSeconds() < 1.f){
+                            alpha = math::interpolate::sineEaseIn(vanishingTime.asSeconds(),0.f,255.f, 1.f);
+                            tiles[i].setFillColor(sf::Color(255,0,255, static_cast<uint8_t>(alpha)));
+                        } else {
+                            tiles[i].setFillColor(sf::Color(255,0,255,0));
+                        }
+                        if(tiles[i].getFillColor().a <= 0)
+                            bodies[i].m_position = sf::Vector2f(-9999,0);
+                    }
+                }
+            }
+
+            if(jumpCount > 1){
+                jumpTime = sf::Time::Zero;
+            } else { // Added else
+                jumpTime += TimePerFrame;
+            }
+
+            canJump = jumped && jumpTime.asSeconds() < 0.4f; // Simplified
+
+            intersection = playerBody.m_position.y + playerBody.m_height >= collisionSys.getBodyInfo().m_position.y - 2.f
+				&& playerBody.m_position.y + playerBody.m_height <= collisionSys.getBodyInfo().m_position.y + collisionSys.getBodyInfo().m_height
+				&& playerBody.m_position.x + playerBody.m_width >= collisionSys.getBodyInfo().m_position.x
+				&& playerBody.m_position.x + playerBody.m_width <= collisionSys.getBodyInfo().m_position.x + collisionSys.getBodyInfo().m_width + playerBody.m_width;
+
+            type = collisionSys.getBodyInfo().m_type;
+
+			if(intersection && debug == 1){
+                std::cout<<"Top Collision: "<<collisionSys.getCollisionInfo().m_collisionTop<<std::endl;
+                std::cout<<"Bottom Collision: "<<collisionSys.getCollisionInfo().m_collisionBottom<<std::endl;
+                std::cout<<"Left Collision: "<<collisionSys.getCollisionInfo().m_collisionLeft<<std::endl;
+                std::cout<<"Right Collision: "<<collisionSys.getCollisionInfo().m_collisionRight<<std::endl;
+                std::cout<<"type: "<<collisionSys.getBodyInfo().m_type<<std::endl;
+                std::cout<<"id: "<<collisionSys.getBodyInfo().m_id<<std::endl;
+                std::cout<<"Gravity: "<<GRAVITY<<std::endl;
+			}
+
+            collisionTop = collisionSys.getCollisionInfo().m_collisionTop;
+            collisionBottom = collisionSys.getCollisionInfo().m_collisionBottom;
+            collisionLeft = collisionSys.getCollisionInfo().m_collisionLeft;
+            collisionRight = collisionSys.getCollisionInfo().m_collisionRight;
+
+
+            if ((speed.x > 15.f && !collisionLeft) || (speed.x < -15.f && !collisionRight)){
+                playerBody.m_position.x += static_cast<float>(turbo)*speed.x*TimePerFrame.asSeconds();
+            }
+            // Removed 'else speed.x = 0.f;' as speed.x is reset if joystick disconnects or is neutral
+
+            if(canJump){
+                if(jumpTime.asSeconds() < .2f && !collisionTop){
+                    playerBody.m_position.y += -800.f*TimePerFrame.asSeconds() + GRAVITY;
+                }
+                else if(jumpTime.asSeconds() > .2f && !collisionTop){ // Note: original had no check for jumpTime > 0.4f
+                    playerBody.m_position.y += GRAVITY - 13.9f;
+                }
+            }
+
+
+            if(collisionBottom){
+                playerBody.m_position.y = playerBody.m_lastPosition.y;
+                playerBody.m_position.x += static_cast<float>(turbo)*speed.x*TimePerFrame.asSeconds();
+            }
+            else if(type == phys::bodyType::platform && collisionBottom){ // This condition was unreachable due to previous if
+                GRAVITY = 0.f;
+                // playerBody.m_position.x += static_cast<float>(turbo)*speed.x*TimePerFrame.asSeconds(); // Redundant if collisionBottom is true
+            }
+            else if(collisionTop && (!collisionLeft || !collisionRight)){
+                playerBody.m_position.y = playerBody.m_lastPosition.y + .5f;
+                playerBody.m_position.x += static_cast<float>(turbo)*speed.x*TimePerFrame.asSeconds();
+            }
+            else if(!collisionBottom && (collisionLeft || collisionRight)){
+                playerBody.m_position.y += GRAVITY;
+                playerBody.m_position.x = playerBody.m_lastPosition.x;
+            }
+			else if(type == phys::bodyType::jumpthrough && collisionBottom){
+                GRAVITY = 0.f;
+                // playerBody.m_position.x += static_cast<float>(turbo)*speed.x*TimePerFrame.asSeconds(); // Redundant
+			}
+			else if (type == phys::bodyType::conveyorBelt && collisionBottom){
+                GRAVITY = 0.f;
+                playerBody.m_position.x += static_cast<float>(turbo)*speed.x*TimePerFrame.asSeconds() - bodies[11].m_surfaceVelocity;
+			}
+			else if(type == phys::bodyType::moving  && collisionBottom){
+                    GRAVITY = 0.f;
+                    playerBody.m_position.x += static_cast<float>(turbo)*speed.x*TimePerFrame.asSeconds() + (2.f*platformVelocity);
+			}
+			else if(collisionBottom && intersection && type == phys::bodyType::falling){
+                    bodies[collisionSys.getBodyInfo().m_id].m_falling = true;
+                    GRAVITY = 0.f;
+                    // playerBody.m_position.x += static_cast<float>(turbo)*speed.x*TimePerFrame.asSeconds(); // Redundant
+			}
+			else if(type == phys::bodyType::vanishing && collisionBottom){
+                    GRAVITY = 0.f;
+                    // playerBody.m_position.x += static_cast<float>(turbo)*speed.x*TimePerFrame.asSeconds(); // Redundant
+			}
+            else{ // Default case: apply gravity if not on something or jumping
+                if (!canJump) { // Only apply gravity if not actively in the upward phase of a jump
+                    if(GRAVITY < 20.f)
+                        GRAVITY += .4f;
+                    else
+                        GRAVITY = 20.f;
+                    playerBody.m_position.y += GRAVITY;
+                }
+                // Horizontal movement is now handled above, separate from gravity
+                // playerBody.m_position.x += static_cast<float>(turbo)*speed.x*TimePerFrame.asSeconds();
+            }
+
+            collisionSys.setCollisionInfo(false, false, false, false);
+
+            for(int i=0; i<3; ++i)
+                collisionSys.resolveCollisions(&playerBody, bodies, NUM_PLATFORM_OBJECTS);
+
+            playerBody.m_lastPosition = playerBody.m_position;
+			player.setPosition(playerBody.m_position);
+		}
+        if (!running) break; // Exit outer while loop if window closed in fixed timestep
+
+		mainView.setCenter(player.getPosition()); // Keep view centered on player
+
+		window.clear();
+		window.setView(mainView); // Set view each frame if it might change
+
+		for (const auto& t : tiles){ // Use const auto& for range-based for
+			window.draw(t);
+		}
+		window.draw(player);
+		window.display();
+	}
+
+	return 0;
+}
+
+
+
+/*#include <iostream>
+#include <SFML/Graphics.hpp>
+#include <optional>
 #include "../include/CollisionSystem.hpp"
 #include "../include/platformbody.hpp"
 #include "../include/playerbody.hpp"
@@ -530,7 +1067,7 @@ int main(void){
 			player.setPosition(playerBody.m_position);//attach player geometry to player body
 		}
 
-        //good enough for now - but will make you dizzy!!!
+        //good enough for now
 		mainView.setCenter(player.getPosition());
 
 		window.clear();
@@ -547,4 +1084,4 @@ int main(void){
 	}
 
 	return 0;
-}
+}*/

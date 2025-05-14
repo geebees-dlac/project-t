@@ -1,33 +1,37 @@
 #ifndef COLLISIONSYSTEM_HPP
 #define COLLISIONSYSTEM_HPP
 
-#include <vector>
-#include <stdlib.h>
-#include <stdbool.h>
-#include <algorithm>
-#include <stdio.h>
-#include <iostream>
-#include <SFML/System/Vector2.hpp>
-// #include <playerbody.hpp>
-// #include <platformbody.hpp>
-// #include <trapbody.hpp>
+#include <SFML/System/Vector2.hpp> // For sf::Vector2f
 
-namespace phys
-{
-        struct collision{
-                float time = 0.f;
-                float surfaceArea = 0.f;
-                int axis = 0;
-        };
+// Forward declare classes if only pointers/references are used in this header's declarations.
+// If a class is passed by value (like platformBody was in your original static method),
+// or if you need to know its size, then you must include its full header.
+class dynamicBody; // Assuming playerbody.hpp defines phys::dynamicBody
+// #include "platformbody.hpp" // Actually, platformBody is passed by value in one static method,
+                             // so we should include it if that method remains.
+                             // For now, let's assume resolveCollisions uses platformBody*
+                             // and the static method might be refactored or also use pointers.
 
-    struct collisionInfo{
-        bool m_collisionTop = false;
-            bool m_collisionBottom = false;
-            bool m_collisionLeft = false;
-            bool m_collisionRight = false;
+namespace phys {
+
+    // Structure to hold information about a specific collision event
+    struct collision {
+        float time = 0.f;          // Time of impact (often normalized)
+        float surfaceArea = 0.f;   // Not commonly used directly in basic resolution, but could be for advanced physics
+        int axis = 0;              // Axis of collision (e.g., 0 for X, 1 for Y, or an enum)
+        sf::Vector2f normal;       // Normal vector of the collision surface
     };
 
-    enum bodyType{
+    // Structure to hold general collision state flags
+    struct collisionInfo {
+        bool m_collisionTop = false;
+        bool m_collisionBottom = false;
+        bool m_collisionLeft = false;
+        bool m_collisionRight = false;
+    };
+
+    // Enum for different types of physics bodies
+    enum class bodyType { // Using enum class for better scoping and type safety
         none = 0,
         platform = 1,
         conveyorBelt = 2,
@@ -35,50 +39,81 @@ namespace phys
         jumpthrough = 4,
         falling = 5,
         vanishing = 6
+        // Add other types like 'trap' or 'player' if distinct physics handling is needed
     };
 
-    struct bodyInfo{
-        unsigned int m_type = phys::bodyType::none;
-            unsigned int m_id = 0;
-            float m_width = 0.f;
-            float m_height = 0.f;
-            bool m_collisionTop = false;
-            bool m_collisionBottom = false;
-            bool m_collisionLeft = false;
-            bool m_collisionRight = false;
-            bool m_falling = false;
-            sf::Vector2f m_position = sf::Vector2f(0,0);
-        float m_surfaceVelocity = 0.f;
+    // Structure to hold information about a physics body involved in a collision
+    // This is often the state of the *other* object the player (or dynamic body) collided with.
+    struct bodyInfo {
+        bodyType m_type = bodyType::none;
+        unsigned int m_id = 0; // Unique identifier for the body
+        float m_width = 0.f;
+        float m_height = 0.f;
+        sf::Vector2f m_position = sf::Vector2f(0.f, 0.f);
+        float m_surfaceVelocity = 0.f; // e.g., for conveyor belts
+        bool m_falling = false;        // Specific state for falling platforms
+        // Note: Collision flags (m_collisionTop, etc.) here might be redundant
+        // if collisionInfo struct or the static bools are the primary source.
+        // Decide on a single source of truth for this information.
     };
 
-        class collisionSystem
-        {
-        public:
-                collisionSystem();
-                ~collisionSystem();
+    // Forward declaration for platformBody if we only use pointers/references in method signatures here
+    class platformBody;
 
-                void resolveCollisions(class dynamicBody * dynamicBody, class platformBody * platformBodies, int numberOfPlatformObjects);
-        void setBodyInfo(platformBody& platform);
-        bodyInfo getBodyInfo(){return m_bodyInfo;};
+    class collisionSystem {
+    public:
+        // --- Constructor & Destructor ---
+        collisionSystem();
+        ~collisionSystem();
 
+        // --- Core Collision Resolution ---
+        // Resolves collisions between one dynamic body and an array of platform bodies.
+        // The dynamicBody's state (position, velocity) might be modified.
+        // Information about the specific collision might be stored (see note on static members).
+        void resolveCollisions(dynamicBody* PtrDynamicBody, platformBody platformBodies[], int numberOfPlatformObjects);
+
+        // --- Collision State Management (Currently using static members) ---
+        // These methods interact with the static m_bodyInfo and m_collisionInfo.
+        // This design implies a single, global "last collision" state.
+
+        // Sets the static m_bodyInfo based on a platform.
+        void setBodyInfo(const platformBody& platform); // Pass by const ref if platform isn't modified
+        // Gets the current static m_bodyInfo.
+        bodyInfo getBodyInfo() const; // Marked const, though it returns a static member
+
+        // Sets the static m_collisionInfo and related static booleans.
         void setCollisionInfo(bool t, bool b, bool l, bool r);
-        collisionInfo getCollisionInfo(){return m_collisionInfo;};
+        // Gets the current static m_collisionInfo.
+        collisionInfo getCollisionInfo() const; // Marked const
 
-        private:
-                static bool movingToStaticIntersectionTest(class dynamicBody * dynamicBody, class platformBody platformBody, struct collision * outCollision);
-                static void resolveStaticCollision(class dynamicBody * dynamicBody, struct collision collision, float timesliceRemaining);
+    private:
+        // --- Internal Collision Test & Resolution Steps ---
+        // These are static, meaning they don't operate on an instance of collisionSystem.
+        // They might directly use or modify the static members if not designed carefully.
+        // `platformBody` passed by value requires its full definition. If it stays static,
+        // platformbody.hpp needs to be included above.
+        static bool movingToStaticIntersectionTest(dynamicBody* PtrDynamicBody, const platformBody& platform, collision* outCollision);
+        static void resolveStaticCollision(dynamicBody* PtrDynamicBody, const collision& colData, float timesliceRemaining);
 
-        public:
-        static bodyInfo m_bodyInfo;
-        static collisionInfo m_collisionInfo;
+    public:
+        // --- Static Member Variables ---
+        // WARNING: These create a single, global state for collision information.
+        // This can be problematic if multiple collisions occur or if you have multiple dynamic bodies.
+        // Consider refactoring to return collision data or store it per-instance/per-body.
+        static bodyInfo m_bodyInfo;             // Info about the last body collided with.
+        static collisionInfo m_collisionInfo;    // General flags about the last collision.
+
+        // These seem redundant if m_collisionInfo already holds this information.
+        // If kept, they also need definition in the .cpp file.
         static bool m_collisionTop;
         static bool m_collisionBottom;
         static bool m_collisionLeft;
         static bool m_collisionRight;
-        };
-}
+    };
 
-#endif
+} // namespace phys
+
+#endif // COLLISIONSYSTEM_HPP
     /*
     enum class ColisionType
     {

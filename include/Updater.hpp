@@ -17,8 +17,25 @@
 /////////////////////////////////
 
 #include <math.h>
+#include <iostream>
 
-namespace math
+namespace math { namespace interpolate {
+    // Dummy implementations for compilation if not fully provided
+    inline float quadraticEaseInOut(float t, float b, float c, float d) {
+        t /= d / 2;
+        if (t < 1) return c / 2 * t * t + b;
+        t--;
+        return -c / 2 * (t * (t - 2) - 1) + b;
+    }
+    inline float sineEaseIn(float t, float b, float c, float d) {
+        // Simplified version, actual SFML easing functions or your own might be different
+        if (t >= d) return b + c;
+        return c * (1 - std::cos(t / d * (3.14159f / 2))) + b;
+    }
+}}
+
+
+/*namespace math
 {
 	#define PI 3.14
 
@@ -57,5 +74,5 @@ namespace math
 		static float elasticEaseOut(float t, float b, float c, float d);
 		static float elasticEaseInOut(float t, float b, float c, float d);
 	};
-}
+} */
 #endif // INTERPOLATE_HPP

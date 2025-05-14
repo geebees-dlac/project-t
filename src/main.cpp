@@ -1,11 +1,11 @@
 #include <iostream>
 #include <SFML/Graphics.hpp>
-#include <../include/CollisionSystem.hpp>
-#include <playerbody.hpp>
-#include <platformbody.hpp>
-#include <tile.hpp>
-#include <trapbody.hpp>
-#include <Updater.hpp> //interpolate
+#include "../include/CollisionSystem.hpp"
+#include "../include/platformbody.hpp"
+#include "../include/playerbody.hpp"
+#include "../include/tile.hpp"
+#include "../include/trapbody.hpp"
+#include "../include/Updater.hpp" //interpolate
 int main(void){
 
     const sf::Vector2f tileSize = sf::Vector2f(32, 32);
